@@ -1,0 +1,11 @@
+[Unit]
+Description=Create local user from Podman secrets
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/usersetup
+
+[Install]
+WantedBy=multi-user.target

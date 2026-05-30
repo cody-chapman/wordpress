@@ -1,5 +1,5 @@
 [Unit]
-Description=Arch Linux
+Description=Arch Linux picupload container
 
 [Container]
 # 1. Use the official base image
@@ -7,17 +7,31 @@ Image=ghcr.io/cody-chapman/picupload:latest
 ContainerName=picupload
 # 2. Tell systemd it is running inside an OCI container
 Environment=container=podman SYSTEMD_LOG_TARGET=console
+SecurityLabelDisable=true
 
 # 3. Boot systemd as the primary process (PID 1)
 Exec=/usr/lib/systemd/systemd
 AddCapability=sys_admin
+
+
+# CRITICAL: Grant permission to mount filesystems
+AddCapability=CAP_SYS_ADMIN
+AddCapability=DAC_READ_SEARCH
+PublishPort=2222:22
+# CRITICAL: Allow the container to use the host's CIFS kernel worker
 AddDevice=/dev/fuse
+
+Volume=/data/picupload:/home/vnaftp:Z
+
+Tmpfs=/run
+Tmpfs=/tmp
 
 #4. Access to secrets
 Secret=domain
 Secret=domainusername
 Secret=domainpassword
-
+Secret=localuser
+Secret=localpassword
 # 5. Enable auto-updates via 'podman auto-update'
 AutoUpdate=registry
 

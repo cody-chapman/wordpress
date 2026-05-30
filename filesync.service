@@ -4,4 +4,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/syncscript
+#ExecStart=/usr/local/bin/syncscript
+ExecStart=/usr/bin/flock -n /tmp/filesync.lock /usr/local/bin/syncscript
+StandardOutput=journal
+StandardError=journal
