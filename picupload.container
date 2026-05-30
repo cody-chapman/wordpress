@@ -21,7 +21,7 @@ PublishPort=2222:22
 # CRITICAL: Allow the container to use the host's CIFS kernel worker
 AddDevice=/dev/fuse
 
-Volume=/data/picupload:/home/vnaftp:Z
+#Volume=/data/picupload:/home/vnaftp:Z
 
 Tmpfs=/run
 Tmpfs=/tmp
