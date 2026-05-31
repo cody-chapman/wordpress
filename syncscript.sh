@@ -141,114 +141,116 @@ init_queue() {
     info "Queue directories ready at $QUEUE_DIR"
 }
 
-# Atomically enqueue a file: hard-link into QUEUE_DIR (same filesystem).
-# Falls back to copy if hard-link fails (cross-device).
+# Atomically enqueue a file, mirroring the relative path under QUEUE_DIR so
+# directory structure is preserved all the way to the mount.
+# e.g. /home/vnaftp/client/2024/photo.jpg → $QUEUE_DIR/client/2024/photo.jpg
 enqueue_file() {
     local src="$1"
-    local name
-    name=$(basename "$src")
-    local dest="$QUEUE_DIR/$name"
+    local rel="${src#"$SOURCE_DIR"/}"   # relative path from SOURCE_DIR
+    local dest="$QUEUE_DIR/$rel"
+    local dest_dir
+    dest_dir=$(dirname "$dest")
 
-    # Guard against name collision from a previous partial run
     if [[ -e "$dest" ]]; then
-        warn "Queue already contains '$name' — skipping re-enqueue (left from prior run?)"
+        warn "Queue already contains '$rel' — skipping re-enqueue (left from prior run?)"
         return 0
     fi
 
+    mkdir -p "$dest_dir"
+
     if ln "$src" "$dest" 2>/dev/null; then
-        info "Enqueued (hard-link): $name"
+        info "Enqueued (hard-link): $rel"
     else
         cp -p "$src" "$dest"
-        info "Enqueued (copy): $name"
+        info "Enqueued (copy): $rel"
     fi
 }
 
 mark_done() {
     local queued="$1"
-    local name
-    name=$(basename "$queued")
-    mv -f "$queued" "$QUEUE_DIR/.done/$name"
-    info "Marked done: $name"
+    local rel="${queued#"$QUEUE_DIR"/}"
+    local dest="$QUEUE_DIR/.done/$rel"
+    mkdir -p "$(dirname "$dest")"
+    mv -f "$queued" "$dest"
+    info "Marked done: $rel"
 }
 
 mark_failed() {
     local queued="$1"
-    local name
-    name=$(basename "$queued")
-    mv -f "$queued" "$QUEUE_DIR/.failed/$name"
-    error "Marked failed: $name"
+    local rel="${queued#"$QUEUE_DIR"/}"
+    local dest="$QUEUE_DIR/.failed/$rel"
+    mkdir -p "$(dirname "$dest")"
+    mv -f "$queued" "$dest"
+    error "Marked failed: $rel"
 }
 # ──────────────────────────────────────────────────────────────────────────────
 
-# ── Conversion ────────────────────────────────────────────────────────────────
-# Convert a JPG to PDF inside WORK_DIR; return the path of the produced file.
-convert_jpg_to_pdf() {
-    local src="$1"          # absolute path to the queued JPG
-    local name
-    name=$(basename "$src")
-    local stem="${name%.*}"
-    local out="$WORK_DIR/${stem}.pdf"
-
-    if ! mogrify -format pdf -write "$out" "$src" 2>>"$LOG_FILE"; then
-        error "mogrify failed for $name"
-        return 1
-    fi
-
-    echo "$out"  # caller captures this
-}
-# ──────────────────────────────────────────────────────────────────────────────
 
 # ── Atomic write to mount ─────────────────────────────────────────────────────
-# Write a file to the mount using a .tmp staging name, then rename.
-# If the mount disappears mid-write the rename will fail and we abort.
+# Write src to $MOUNT_POINT/<dest_rel>, preserving subdirectory structure.
+# Uses a .tmp staging name in the same directory, then renames atomically.
 atomic_copy_to_mount() {
     local src="$1"
+    local dest_rel="$2"          # e.g. "client/2024/photo.pdf"
     local dest_name
-    dest_name=$(basename "$src")
-    local staging="$MOUNT_POINT/.$dest_name.tmp"
-    local final="$MOUNT_POINT/$dest_name"
+    dest_name=$(basename "$dest_rel")
+    local dest_dir="$MOUNT_POINT/$(dirname "$dest_rel")"
+    local staging="$dest_dir/.$dest_name.tmp"
+    local final="$dest_dir/$dest_name"
 
-    cp -p "$src" "$staging" \
-        || { error "cp to staging failed for $dest_name"; return 1; }
+    mkdir -p "$dest_dir"         || { error "mkdir failed for $dest_dir"; return 1; }
 
-    mv -f "$staging" "$final" \
-        || { rm -f "$staging"; error "mv staging→final failed for $dest_name"; return 1; }
+    cp -p "$src" "$staging"         || { error "cp to staging failed for $dest_rel"; return 1; }
 
-    info "Atomically written to mount: $dest_name"
+    mv -f "$staging" "$final"         || { rm -f "$staging"; error "mv staging→final failed for $dest_rel"; return 1; }
+
+    info "Atomically written to mount: $dest_rel"
 }
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── Process one queued item ───────────────────────────────────────────────────
 process_item() {
     local queued="$1"
+    # Relative path beneath QUEUE_DIR — mirrors SOURCE_DIR structure
+    local rel="${queued#"$QUEUE_DIR"/}"
     local name
-    name=$(basename "$queued")
-    info "Processing: $name"
+    name=$(basename "$rel")
+    local rel_dir
+    rel_dir=$(dirname "$rel")   # e.g. "client/2024" or "."
+    info "Processing: $rel"
 
     local to_upload
+    local dest_rel   # path relative to MOUNT_POINT
 
-    # Check if this is a JPG that needs conversion
     if [[ "${name,,}" =~ \.(jpg|jpeg)$ ]]; then
-        local pdf_path
-        if ! pdf_path=$(convert_jpg_to_pdf "$queued"); then
+        local stem="${name%.*}"
+        local work_subdir="$WORK_DIR/$rel_dir"
+        mkdir -p "$work_subdir"
+        local pdf_path="$work_subdir/${stem}.pdf"
+
+        if ! mogrify -format pdf -write "$pdf_path" "$queued" 2>>"$LOG_FILE"; then
+            error "mogrify failed for $rel"
             mark_failed "$queued"
             return 1
         fi
         to_upload="$pdf_path"
+        dest_rel="$rel_dir/${stem}.pdf"
     else
-        # Non-JPG: copy to work dir so the upload path is always in WORK_DIR
-        cp -p "$queued" "$WORK_DIR/$name"
-        to_upload="$WORK_DIR/$name"
+        local work_subdir="$WORK_DIR/$rel_dir"
+        mkdir -p "$work_subdir"
+        cp -p "$queued" "$work_subdir/$name"
+        to_upload="$work_subdir/$name"
+        dest_rel="$rel"
     fi
 
     # Verify the mount is still alive before writing
     if ! is_mounted; then
-        warn "Mount lost before writing $name — re-mounting"
+        warn "Mount lost before writing $rel — re-mounting"
         ensure_mount
         verify_mount_writable
     fi
 
-    if ! atomic_copy_to_mount "$to_upload"; then
+    if ! atomic_copy_to_mount "$to_upload" "$dest_rel"; then
         mark_failed "$queued"
         return 1
     fi
@@ -257,7 +259,7 @@ process_item() {
     mark_done "$queued"
 
     # Remove the original from SOURCE (safe: queued copy still exists in .done/)
-    local original="$SOURCE_DIR/$name"
+    local original="$SOURCE_DIR/$rel"
     if [[ -e "$original" ]]; then
         rm -f "$original"
         info "Removed source: $original"
@@ -268,7 +270,7 @@ process_item() {
 # ── Stale .tmp cleanup ────────────────────────────────────────────────────────
 # Remove any staging temps left by a previous crashed run (older than 1 hour)
 cleanup_stale_temps() {
-    find "$MOUNT_POINT" -maxdepth 1 -name '.*.tmp' -mmin +60 -print \
+    find "$MOUNT_POINT" -name '.*.tmp' -mmin +60 -print \
         | while IFS= read -r stale; do
             warn "Removing stale temp: $stale"
             rm -f "$stale"
@@ -294,23 +296,31 @@ main() {
     local enqueued=0
     while IFS= read -r -d '' src_file; do
         enqueue_file "$src_file"
-        (( enqueued++ )) || true
-    done < <(find "$SOURCE_DIR" -maxdepth 1 -mindepth 1 \
-                  -not -type d -print0)
+        enqueued=$(( enqueued + 1 ))
+    done < <(find "$SOURCE_DIR" -mindepth 2 \
+                  -not -type d \
+                  -not -name '.*' \
+                  -print0)
 
     info "Enqueued $enqueued file(s)"
 
     # ── Phase 2: Process the queue ───────────────────────────────────────────
+    # Recurse into all subdirs of QUEUE_DIR; skip .done and .failed trees.
     info "Phase 2: processing queue"
     local ok=0 fail=0
     while IFS= read -r -d '' queued_file; do
         if process_item "$queued_file"; then
-            (( ok++   )) || true
+            ok=$(( ok + 1 ))
         else
-            (( fail++ )) || true
+            fail=$(( fail + 1 ))
         fi
-    done < <(find "$QUEUE_DIR" -maxdepth 1 -mindepth 1 \
-                  -not -type d -print0)
+    done < <(find "$QUEUE_DIR" \
+                  -not \( -path "$QUEUE_DIR/.done"   -prune \) \
+                  -not \( -path "$QUEUE_DIR/.failed" -prune \) \
+                  -mindepth 1 \
+                  -not -type d \
+                  -not -name '.*' \
+                  -print0)
 
     info "Queue run complete — ok=$ok failed=$fail"
 
