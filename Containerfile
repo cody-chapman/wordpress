@@ -34,8 +34,6 @@ RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/
     sed -i 's/systemd//g' /etc/nsswitch.conf && \
     sed -i 's|system-remote-login|system-auth|g' /etc/pam.d/sshd
 
-RUN mkdir -p /run/sshd
-
 # Create necessary runtime directories for PAM and sshd
 RUN mkdir -p /run/sshd /run/utmp /var/run/utmp /tmp && \
     chmod 1777 /tmp /run/utmp /var/run/utmp

@@ -50,7 +50,7 @@ die()   { error "$@"; exit 1; }
 cleanup() {
     local exit_code=$?
     rm -rf "$WORK_DIR"
-    rm -f  "$LOCK_FILE"
+    rm -rf  "$LOCK_FILE"
     [[ $exit_code -eq 0 ]] && info "Run complete (exit 0)" \
                            || warn "Run finished with exit code $exit_code"
 }
