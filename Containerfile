@@ -1,46 +1,35 @@
-FROM docker.io/library/archlinux:latest
+FROM rockylinux/rockylinux:10-ubi
 
-# 1. Update the system and install systemd + basic tools
-RUN pacman -Syu --noconfirm && \
-    pacman -S --noconfirm systemd dbus sudo cifs-utils openssh imagemagick fail2ban nano pam && \
-    pacman -Scc --noconfirm
+ARG MAINTAINER_LABEL="Cody Chapman <cody.chapman@gmail.com>"
+LABEL org.opencontainers.image.authors="$MAINTAINER_LABEL" \
+      org.opencontainers.image.title="Wordpress Systemd image - Rocky/UBI" \
+      org.opencontainers.image.description="Docker image includes mariadb, httpd, php and redis UBI 10 and Rocky Linux repositories."
 
-# 2. Inform systemd that it is running inside an OCI container
-ENV container=podman
 
-# 3. Clean up unnecessary systemd services that cause issues in containers
-RUN rm -f /lib/systemd/system/multi-user.target.wants/*; \
-    rm -f /etc/systemd/system/*.wants/*; \
-    rm -f /lib/systemd/system/local-fs.target.wants/*; \
-    rm -f /lib/systemd/system/sockets.target.wants/*udev*; \
-    rm -f /lib/systemd/system/sockets.target.wants/*initctl*; \
-    rm -f /lib/systemd/system/basic.target.wants/*; \
-    rm -f /lib/systemd/system/anaconda.target.wants/*; \
-    rm -f /lib/systemd/system/plymouth*; \
-    rm -f /lib/systemd/system/systemd-update-utmp*
+# 2. Install fundamental tools, CUPS, and available printer drivers/backends
+# Note: RHEL/Rocky packages combine many individual printer drivers into comprehensive suites 
+# (e.g., cups-filters, foomatic-db-ppds, and gutenprint).
+RUN dnf update -y && \
+    dnf install -y \
+        sudo \
+        util-linux \
+        httpd \
+        mariadb-server \
+        mariadb \
+        php \
+        php-mysqlnd \
+        php-gd \
+        php-xml \
+        php-mbstring \
+        php-json \
+        php-intl \
+        redis \
+        php-pecl-zip \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf/*
 
-COPY filesync.* /etc/systemd/system/
-
-COPY usersetup.service /etc/systemd/system/
-
-COPY syncscript.sh /usr/local/bin/syncscript
-COPY usersetup.sh /usr/local/bin/usersetup
-
-RUN chmod +x /usr/local/bin/syncscript /usr/local/bin/usersetup
-
-RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config && \
-    sed -i 's/#UsePAM yes/UsePAM yes/' /etc/ssh/sshd_config && \
-    sed -i 's/systemd//g' /etc/nsswitch.conf && \
-    sed -i 's|system-remote-login|system-auth|g' /etc/pam.d/sshd
-
-# Create necessary runtime directories for PAM and sshd
-RUN mkdir -p /run/sshd /run/utmp /var/run/utmp /tmp && \
-    chmod 1777 /tmp /run/utmp /var/run/utmp
-
-EXPOSE 22
-
-RUN systemctl enable sshd \
-    && systemctl enable filesync.timer \
-    && systemctl enable fail2ban \
-    && systemctl enable usersetup
+# This container maps to the standard CUPS interface port
+EXPOSE 80
+RUN systemctl enable httpd && \
+    systemctl enable redis 88 \
+    systemctl enable mariadb
