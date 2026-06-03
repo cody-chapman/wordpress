@@ -7,8 +7,6 @@ Image=ghcr.io/cody-chapman/wordpress:latest
 ContainerName=wordpress
 # 2. Tell systemd it is running inside an OCI container
 Environment=container=podman SYSTEMD_LOG_TARGET=console
-Environment=SQLUSER=root
-Environment=SQLHOST=127.0.0.1
 SecurityLabelDisable=true
 
 # 3. Boot systemd as the primary process (PID 1)
