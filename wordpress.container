@@ -1,10 +1,10 @@
 [Unit]
-Description=Arch Linux picupload container
+Description=Wordpress
 
 [Container]
 # 1. Use the official base image
-Image=ghcr.io/cody-chapman/picupload:latest
-ContainerName=picupload
+Image=ghcr.io/cody-chapman/wordpress:latest
+ContainerName=wordpress
 # 2. Tell systemd it is running inside an OCI container
 Environment=container=podman SYSTEMD_LOG_TARGET=console
 SecurityLabelDisable=true
@@ -17,21 +17,20 @@ AddCapability=sys_admin
 # CRITICAL: Grant permission to mount filesystems
 AddCapability=CAP_SYS_ADMIN
 AddCapability=DAC_READ_SEARCH
-PublishPort=2222:22
-# CRITICAL: Allow the container to use the host's CIFS kernel worker
-AddDevice=/dev/fuse
+PublishPort=80:80
 
-#Volume=/data/picupload:/home/vnaftp:Z
+Volume=/data/picupload:/home/vnaftp:Z
+Volume=/data/picupload:/home/vnaftp:Z
+Volume=/data/picupload:/home/vnaftp:Z
 
 Tmpfs=/run
 Tmpfs=/tmp
 
 #4. Access to secrets
-Secret=domain
-Secret=domainusername
-Secret=domainpassword
-Secret=localuser
-Secret=localpassword
+Secret=sqlusername
+Secret=sqlpassword
+Secret=sqlhost
+
 # 5. Enable auto-updates via 'podman auto-update'
 AutoUpdate=registry
 
