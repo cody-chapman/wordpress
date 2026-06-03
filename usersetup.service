@@ -1,5 +1,5 @@
 [Unit]
-Description=Create local user from Podman secrets
+Description=Create sql user from Podman secrets
 After=network.target
 
 [Service]
