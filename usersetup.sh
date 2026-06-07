@@ -40,3 +40,9 @@ fi
 echo "=================================================="
 echo " MariaDB setup complete on Rocky Linux!"
 echo "=================================================="
+cat << 'EOF' > /etc/httpd/conf.d/wordpress.conf
+<IfModule mod_env.c>
+    SetEnvIf X-Forwarded-Proto https HTTPS=on
+</IfModule>
+
+EOF

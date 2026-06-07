@@ -19,11 +19,11 @@ AddCapability=CAP_SYS_ADMIN
 AddCapability=DAC_READ_SEARCH
 PublishPort=80:80
 
-Volume=/data/picupload:/home/vnaftp:Z
-Volume=/data/picupload:/home/vnaftp:Z
-Volume=/data/picupload:/home/vnaftp:Z
+Volume=/configs/wordpress:/var/www/html:Z
+Volume=/configs/mariadb:/var/lib/mysql:Z
+Volume=/configs/valkey:/data:Z
 
-Tmpfs=/run
+Tmpfs=/run 
 Tmpfs=/tmp
 
 #4. Access to secrets

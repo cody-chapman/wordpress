@@ -23,13 +23,20 @@ RUN dnf update -y && \
         php-mbstring \
         php-json \
         php-intl \
-        redis \
         php-pecl-zip \
+        valkey \
+        procps-ng \
     && dnf clean all \
     && rm -rf /var/cache/dnf/*
 
+COPY usersetup.sh /usr/local/bin/usersetup
+COPY usersetup.service /etc/systemd/system
+RUN chmod +x /usr/local/bin/usersetup
+RUN sudo sed -i 's/#bind-address=0.0.0.0/bind-address=0.0.0.0/' /etc/my.cnf.d/mariadb-server.cnf
+
 # This container maps to the standard CUPS interface port
-EXPOSE 80
+EXPOSE 80 3306
 RUN systemctl enable httpd && \
-    systemctl enable redis 88 \
-    systemctl enable mariadb
+    systemctl enable valkey && \
+    systemctl enable mariadb && \
+    systemctl enable usersetup
