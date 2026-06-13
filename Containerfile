@@ -5,6 +5,8 @@ LABEL org.opencontainers.image.authors="$MAINTAINER_LABEL" \
       org.opencontainers.image.title="Wordpress Systemd image - Rocky/UBI" \
       org.opencontainers.image.description="Docker image includes mariadb, httpd, php and redis UBI 10 and Rocky Linux repositories."
 
+ENV TZ=America/Chicago
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 2. Install fundamental tools, CUPS, and available printer drivers/backends
 # Note: RHEL/Rocky packages combine many individual printer drivers into comprehensive suites 
@@ -24,6 +26,7 @@ RUN dnf update -y && \
         php-json \
         php-intl \
         php-pecl-zip \
+        php-ldap \
         valkey \
         procps-ng \
     && dnf clean all \
